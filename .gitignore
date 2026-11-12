@@ -1,0 +1,15 @@
+# Competition data must never be committed: it is licensed for the competition only.
+data/*
+!data/README.md
+*.mp4
+*_atd.txt
+*_atd.xml
+*_homography.csv
+*_smart_tagging.xml
+*.npz
+
+# Generated files
+submission/
+__pycache__/
+.venv/
+*.pyc
