@@ -134,6 +134,23 @@ possessions against 17 true ones (average 14.9 s against 14.2 s), and has dead-b
 0.03. We ran the official scorer on them only to check that our pipeline produces a valid,
 sensible file, and changed no setting because of it.
 
+### Approaches we tested and did not use
+
+All of these were judged on the sample games only, never on the provided match.
+
+- **Training on labels made from the provided match ("pseudo-labels").** Rejected without testing:
+  the clarification email requires all training and tuning to use external data only.
+- **Learning the evidence weights instead of setting them by hand.** We trained a classifier
+  (logistic regression, and gradient-boosted trees) on per-frame evidence from two sample games,
+  fed its output into the same decoder, and scored it on the third game, rotating through all
+  three. To make the comparison fair, our model was also retuned on the same two games each time.
+  Average spellF1 on the held-out game: our hand-weighted model 0.538, gradient-boosted trees
+  0.539, logistic regression 0.523. A gain of 0.001 is well inside the noise, and the trained
+  version would add a dependency, a model file and a risk to byte-for-byte reproduction, so we
+  kept the hand-weighted model.
+- The same test shows our model is not overfitted to the sample games: retuned on two games, it
+  scores 0.538 on the unseen third; tuned on all three, it scores 0.534.
+
 ## 6. Limitations, and what we would fix with more time
 
 - **Short possessions are merged.** On the sample games the model finds about 70% as many
@@ -145,6 +162,11 @@ sensible file, and changed no setting because of it.
   model that follows passes through the gaps would help most.
 - **Stoppages are detected late.** Player speed falls a second or two after the whistle, so dead
   stretches start late and end late.
+- **Possession changes pass through a brief dead ball.** With the tuned penalties, going H → D → A
+  (2 × `c_dead` = 60) is cheaper than H → A directly (`c_switch` = 80), so most changes of team show
+  a dead ball shorter than a second: 853 of the 1,420 dead spells on the sample games. Removing
+  them changes sample-game spellF1 by less than 0.001 (0.5338 to 0.5335), so we left the model as
+  tuned. A cleaner design would forbid dead spells shorter than about a second.
 - **Three practice games.** All twelve settings rest on three matches from one provider, and on our
   guesses about how the competition's tracking and tagging differ from them.
 - **Defending-phase tags are unused**, because their meaning is not documented. With them on, our
@@ -172,7 +194,7 @@ explicitly allows.
 | what we did | the rule that allows it |
 |---|---|
 | tuned every setting on Metrica's public sample games 1–3 | "If your algorithm has parameters that need to be tuned, you MUST tune them on external data" (clarification); "External data about other games" (RULES.md) |
-| used that sample data, crediting the source | "Using any dataset you have the rights to use" (clarification); the sample data's README permits use and asks for acknowledgement in public uses |
+| used that sample data, crediting the source | "Using any dataset you have the rights to use" (clarification); the sample data is published by Metrica Sports for the community to experiment with; it has no formal licence file, and its README asks users to "be responsible with the use of this data" and to acknowledge the source in public uses, which we do |
 | used the tactical tracking and the Smart Tagging as inputs | "Using as input … the automatic tracking data, the smart tagging" (clarification) |
 | ran the organisers' scorer on the public 5-minute ground truth, as a pipeline check only | "Running automatic checks using only the provided data" (clarification); "for checking that your pipeline is correct" (RULES.md) |
 | used an AI coding assistant to help write the code | "LLMs, hosted or local" (RULES.md). No provided data was ever uploaded to it |

@@ -1,4 +1,10 @@
-# Pinned so the submission file reproduces byte for byte. Tested with Python 3.12 on Windows 11
-# and Python 3.12 on Linux. pandas is only needed by scripts/tune.py (reading the sample games).
+# Every package pinned, including what numpy and pandas pull in, so a clean install is the same
+# everywhere. Tested with Python 3.12 on Windows 11 and on Linux. pandas (and its three
+# dependencies below) is only needed by scripts/tune.py and the tests; the submission itself
+# needs only numpy.
 numpy==1.26.4
 pandas==2.2.3
+python-dateutil==2.9.0.post0
+pytz==2024.2
+tzdata==2024.2
+six==1.16.0

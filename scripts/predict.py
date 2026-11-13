@@ -76,6 +76,8 @@ def main():
     where.add_argument("--tactical-dir", help="a folder holding the BAR-ATH_tactical_* files")
     ap.add_argument("--params", default=os.path.join(ROOT, "params.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "submission", TEAM + ".csv"))
+    ap.add_argument("--no-cache", action="store_true",
+                    help="parse the tracking file from scratch; neither read nor write a cache")
     args = ap.parse_args()
 
     if args.tactical_dir:
@@ -97,7 +99,8 @@ def main():
 
     print("reading tracking (first run takes about a minute, then it is cached) ...")
     track = tracking.read_epts(raw, meta, PITCH, N_FRAMES,
-                               cache_path=os.path.join(folder, STEM + "_atd_cache.npz"))
+                               cache_path=None if args.no_cache
+                               else os.path.join(folder, STEM + "_atd_cache.npz"))
     print("computing evidence ...")
     barcelona_home = home_is_barcelona(meta)
     print("home side (H) in the tracking: {}".format(

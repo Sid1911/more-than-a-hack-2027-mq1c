@@ -47,6 +47,18 @@ Validate before submitting, with the organisers' own checker:
 python path/to/more-than-a-hack-2027/evaluation/validate_submission.py submission/MQ1C.csv
 ```
 
+### Check the code and the file (optional)
+
+```
+.venv/bin/python -m unittest discover -s tests -v                  # tests on made-up data, no match data needed
+.venv/bin/python scripts/verify_submission.py ours.csv theirs.csv  # byte-for-byte comparison of two files
+.venv/bin/python scripts/reproduce_check.py --data-dir path/to/bundle --original submission/MQ1C.csv
+.venv/bin/python scripts/audit_repo.py                             # no match data anywhere in the repo or its history
+```
+
+`reproduce_check.py` clones the repository into an empty folder, installs the pinned packages in a
+new environment, regenerates the file from scratch and compares it with the original byte for byte.
+
 ### Regenerate the settings (optional)
 
 `params.json` is the output of a deterministic search. To rebuild it, clone
@@ -72,6 +84,10 @@ scripts/
   predict.py      writes the submission file      <- the command that regenerates our file
   tune.py         rebuilds params.json from the sample games
   summary.py      turns a submission into a readable list of possessions and goals
+  verify_submission.py   compares two submission files byte for byte
+  reproduce_check.py     fresh clone + clean install + regenerate + compare
+  audit_repo.py          checks every file and every commit for match data before publishing
+tests/            tests on a small made-up data bundle (synthetic.py), never the match data
 params.json       the tuned settings
 team.txt          our team name, used to name the submission file
 run.bat           one-click run on Windows; demo.bat shows the possessions
