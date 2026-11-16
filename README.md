@@ -133,7 +133,7 @@ the match data. Details in [TECHNICAL.md](TECHNICAL.md#rules-compliance).
 
 - Challenge, scorer and competition data: Metrica Sports, FC Barcelona Innovation Hub and Mobile
   World Capital Barcelona.
-- Model A's feature code: Pranav Swaroop (team MQ1C).
+- Model A's feature code: Pranav Swaroop, manvit sanka, vignesh, suchit honamalapa (team MQ1C).
 - Tuning data: [Metrica Sports sample data](https://github.com/metrica-sports/sample-data), games
   1–3 — used with thanks, as its README asks public uses to acknowledge the source.
 
