@@ -10,7 +10,8 @@ file in every commit of every branch and tag, not only the current one -- for:
   * contents that look like competition data whatever the file is called: tracking lines
     ("12345:x,y,s;...:bx,by,bz"), Smart Tagging XML (<instance> ... <code>), a submission or
     ground-truth table (frame,label with thousands of rows), numpy archives, video headers;
-  * any file over 1 MB.
+  * any file over 1 MB, except the trained Model A in models/ (up to 10 MB; trained on external
+    games only, it holds tree split points, not data).
 
 It also lists files that are in the working folder but ignored by git (the venv, the data, the
 cache, the submission): those are not published. Exits 0 only if nothing was found.
@@ -23,6 +24,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAX_BYTES = 1000000
+MODEL_FILES = {"models/model_a.pkl": 10000000}
 NAME_PATTERNS = [r"BAR-ATH", r"_atd\.", r"homography", r"smart_tagging", r"\.mp4$", r"\.mov$",
                  r"\.npz$", r"\.npy$", r"^submission/", r"^data/(?!README\.md$)", r"\.parquet$",
                  r"\.pkl$", r"cache"]
@@ -67,6 +69,8 @@ def main():
         commits, len(sizes), len(history_paths)))
 
     for path in history_paths:
+        if path in MODEL_FILES:
+            continue
         for pat in NAME_PATTERNS:
             if re.search(pat, path, re.I):
                 findings.append("name looks like competition data or a generated file: " + path)
@@ -74,9 +78,12 @@ def main():
 
     for sha, size in sizes.items():
         where = ", ".join(sorted(blobs[sha]))
-        if size > MAX_BYTES:
+        limit = max([MAX_BYTES] + [MODEL_FILES.get(p, 0) for p in blobs[sha]])
+        if size > limit:
             findings.append("file over 1 MB in history: {} ({:,} bytes)".format(where, size))
             continue
+        if any(p in MODEL_FILES for p in blobs[sha]):
+            continue  # a pickled model: binary, checked by size only
         body = git("cat-file", "-p", sha)
         if ATD_LINE.search(body):
             findings.append("tracking-like lines in: " + where)

@@ -84,6 +84,7 @@ class PipelineTests(unittest.TestCase):
     def test_prints_its_checksum_and_home_side(self):
         self.assertIn("SHA-256 " + sha256(self.out), self.log)
         self.assertIn("home side (H) in the tracking: Barcelona", self.log)
+        self.assertIn("Model A used with weight", self.log)
 
     def test_deterministic_with_and_without_cache(self):
         b = os.path.join(self.tmp, "b.csv")

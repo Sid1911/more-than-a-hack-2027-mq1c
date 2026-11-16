@@ -30,6 +30,8 @@ DEFAULT_PARAMS = {
     "a0": 1.8,         # m/s; typical median player speed at the live/dead boundary
     "w_tag": 0.5,      # set-piece tag: dead just before the restart, live just after
     "w_phase": 0.0,    # tactical phase tags: which team the phase says has the ball
+    # Model A (possession/modela): weight of its log-probabilities; 0 = not used
+    "w_model": 0.0,
     # switching penalties
     "c_switch": 30.0,  # H <-> A
     "c_dead": 30.0,    # alive <-> D, either way
@@ -146,13 +148,18 @@ def viterbi(e, c_switch, c_dead):
     return path
 
 
-def predict(f, p, blocks):
-    """Labels for a whole match. blocks = [(first, last_inclusive), ...]; X elsewhere."""
+def predict(f, p, blocks, model_a=None):
+    """Labels for a whole match. blocks = [(first, last_inclusive), ...]; X elsewhere.
+    model_a: optional (n, 3) evidence from Model A (possession.modela.evidence), weighted by
+    p["w_model"]."""
     n = len(f["vis"])
     labels = np.full(n, X, dtype=np.int8)
+    e = emissions(f, p)
+    if model_a is not None and p.get("w_model", 0.0):
+        e = e + p["w_model"] * model_a
     # Rounded to 1e-6 so the decision is the same on every machine: numpy's vectorised exp can
     # differ in the last bit between CPUs, which could flip a near-tie in the search below.
-    e = np.round(emissions(f, p), 6)
+    e = np.round(e, 6)
     for first, last in blocks:
         labels[first:last + 1] = viterbi(e[first:last + 1], p["c_switch"], p["c_dead"])
     return labels

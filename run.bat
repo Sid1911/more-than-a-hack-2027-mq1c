@@ -19,7 +19,7 @@ if not exist "%PY%" (
   "%BASE%" -m venv "%HERE%.venv" || goto fail
 )
 
-echo Installing pinned numpy and pandas (only slow the first time) ...
+echo Installing the pinned packages (slow the first time, and once after an update) ...
 "%PY%" -m pip install --disable-pip-version-check -q -r "%HERE%requirements.txt" || goto fail
 
 set "WHERE=--data-dir "%HERE%data""

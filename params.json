@@ -1,14 +1,15 @@
 {
-  "a0": 1.8,
-  "b_dead": 0.0,
-  "c_dead": 30.0,
-  "c_switch": 80.0,
-  "m_scale": 1.0,
-  "r_ctrl": 3.0,
-  "v_ctrl": 8.0,
-  "w_act": 0.5,
-  "w_out": 3.0,
-  "w_phase": 0.2,
-  "w_tag": 2.0,
-  "w_team": 8.0
+ "a0": 1.8,
+ "b_dead": 0.0,
+ "c_dead": 30.0,
+ "c_switch": 80.0,
+ "m_scale": 1.0,
+ "r_ctrl": 3.0,
+ "v_ctrl": 8.0,
+ "w_act": 0.5,
+ "w_model": 2.0,
+ "w_out": 3.0,
+ "w_phase": 0.2,
+ "w_tag": 2.0,
+ "w_team": 8.0
 }

@@ -5,8 +5,9 @@ for every frame of FC Barcelona vs Athletic Club, who has the ball — home (`H`
 nobody, because the ball is dead (`D`).
 
 No deep learning and no labels from the provided game. A three-state model weighs a handful of
-signals from the automatic tracking and tagging, then picks the one label sequence per half that
-keeps possessions whole — because whole possessions are what the ranking metric counts.
+signals from the automatic tracking and tagging, plus a second opinion from a small tree model
+trained on other games, then picks the one label sequence per half that keeps possessions whole —
+because whole possessions are what the ranking metric counts.
 
 ## The approach in one screen
 
@@ -15,10 +16,10 @@ keeps possessions whole — because whole possessions are what the ranking metri
 | Input | the tactical automatic tracking (players + ball) and the Smart Tagging. Nothing else |
 | Output | `submission/MQ1C.csv`, 199,319 rows of `frame,label` |
 | Method | per-frame evidence for H / A / D, then a Viterbi search with a penalty for every switch |
-| Evidence | nearest player to the ball · how fast the players move · ball outside the lines · set-piece tags · attacking-phase tags |
-| Tuning | 12 settings, tuned only on Metrica's three public sample games, roughened to look like the competition's tracking |
+| Evidence | nearest player to the ball · how fast the players move · ball outside the lines · set-piece tags · attacking-phase tags · Model A's opinion (147 ball and player measurements, gradient-boosted trees) |
+| Tuning | 13 settings and Model A, tuned and trained only on Metrica's three public sample games, roughened to look like the competition's tracking |
 | Training labels | none from the provided game. Sample-game labels come from Metrica's published event data |
-| Runtime | about 1 minute on a laptop (plus about 1 minute the first time, to parse the tracking) |
+| Runtime | about 2 minutes on a laptop (plus about 1 minute the first time, to parse the tracking) |
 | Reproducible | deterministic; the run prints the file's SHA-256 so you can check it matches ours |
 
 The full write-up — approach, assets used and dropped, training data, possession rules,
@@ -26,7 +27,7 @@ limitations — is in [TECHNICAL.md](TECHNICAL.md).
 
 ## Reproduce our submission file
 
-Python 3.9 or newer (we used 3.12). Unpack the organisers' data bundle into `./data` (see
+Python 3.11 or newer (we used 3.12). Unpack the organisers' data bundle into `./data` (see
 [data/README.md](data/README.md)), then:
 
 ```
@@ -68,7 +69,12 @@ new environment, regenerates the file from scratch and compares it with the orig
 .venv/bin/python scripts/tune.py --sample-dir path/to/sample-data
 ```
 
-It takes about two minutes and writes the same `params.json` every time.
+It takes about two minutes and writes the same `params.json` every time. To rebuild Model A
+(`models/model_a.pkl`) and see how its weight was chosen:
+
+```
+.venv/bin/python scripts/train_model_a.py --sample-dir path/to/sample-data
+```
 
 ## What is in this repository
 
@@ -77,18 +83,22 @@ possession/
   tracking.py     reads the competition tracking and the three sample games into one shape
   features.py     per-frame evidence: distances, speeds, player activity, tags
   model.py        the three-state model, the tactical-code directions and the Viterbi search
+  modela/         Model A: our teammate's feature code (build_features.py, unchanged), the
+                  adapter that runs it on any game (layout.py), and loading/evidence
   labels.py       possession labels for the sample games, from their event data
   simulate.py     roughens the sample games to look like the competition's automatic tracking
   metrics.py      spellF1 and macroF1, re-implemented to the organisers' definitions, for tuning
 scripts/
   predict.py      writes the submission file      <- the command that regenerates our file
   tune.py         rebuilds params.json from the sample games
+  train_model_a.py       trains Model A on the sample games and chooses its weight
   summary.py      turns a submission into a readable list of possessions and goals
   verify_submission.py   compares two submission files byte for byte
   reproduce_check.py     fresh clone + clean install + regenerate + compare
   audit_repo.py          checks every file and every commit for match data before publishing
 tests/            tests on a small made-up data bundle (synthetic.py), never the match data
 params.json       the tuned settings
+models/           Model A (model_a.pkl, trained on the sample games only) and its feature list
 team.txt          our team name, used to name the submission file
 run.bat           one-click run on Windows; demo.bat shows the possessions
 reproduce.sh      one-command run on Linux / macOS
@@ -101,11 +111,12 @@ TECHNICAL.md      the technical document
 Ranking score (spellF1) on Metrica's three sample games, roughened like the competition data and
 never seen during tuning (average of three games × two roughenings):
 
-| | spellF1 |
-|---|---|
-| organisers' baseline method (nearest player + majority vote over 2 or 5 s) | 0.30 |
-| our model, tracking only | 0.52 |
-| our model, tracking + attacking-phase tags (submitted) | 0.54 |
+| | spellF1 | macroF1 |
+|---|---|---|
+| organisers' baseline method (nearest player + majority vote over 2 or 5 s) | 0.30 | |
+| main model, tracking only | 0.52 | |
+| main model, tracking + attacking-phase tags | 0.534 | 0.781 |
+| main model + Model A, each game judged by a Model A that never saw it (submitted) | **0.591** | **0.799** |
 
 On the organisers' public 5 minutes, see [TECHNICAL.md](TECHNICAL.md#results). That window holds
 17 possessions, so it is a pipeline check, not a benchmark — and we never tuned on it.
@@ -122,6 +133,7 @@ the match data. Details in [TECHNICAL.md](TECHNICAL.md#rules-compliance).
 
 - Challenge, scorer and competition data: Metrica Sports, FC Barcelona Innovation Hub and Mobile
   World Capital Barcelona.
+- Model A's feature code: Pranav Swaroop (team MQ1C).
 - Tuning data: [Metrica Sports sample data](https://github.com/metrica-sports/sample-data), games
   1–3 — used with thanks, as its README asks public uses to acknowledge the source.
 

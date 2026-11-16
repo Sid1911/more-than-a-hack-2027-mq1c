@@ -3,8 +3,9 @@
     python scripts/predict.py                     # data in ./data, file in ./submission/
     python scripts/predict.py --data-dir PATH     # or set MTAH_DATA_DIR
 
-Reads the tactical ATD and the Smart Tagging, applies the settings in params.json (tuned on
-other games by scripts/tune.py), and writes 199,319 rows of frame,label. Deterministic: the
+Reads the tactical ATD and the Smart Tagging, adds Model A's opinion (models/model_a.pkl, trained
+on other games by scripts/train_model_a.py), applies the settings in params.json (tuned on other
+games by scripts/tune.py), and writes 199,319 rows of frame,label. Deterministic: the
 same data and params.json always give the same file, and the SHA-256 it prints lets anyone
 check that their copy matches ours byte for byte.
 """
@@ -112,8 +113,15 @@ def main():
                                           and model.PHASE_DIRECTION.get(code, 0.0) < 0)))
     print("tactical phases used: {} of {}".format(used, len(phases)))
     f = features.compute(track, PITCH, tag_mask, phases)
+    model_a = None
+    if params.get("w_model", 0.0):
+        from possession import modela
+        print("computing Model A's measurements ...")
+        X = modela.matrix(track, PITCH, HALVES)
+        model_a = modela.evidence(modela.load(), X, f["vis"])
+        print("Model A used with weight {}".format(params["w_model"]))
     print("labelling ...")
-    codes = model.predict(f, params, HALVES)
+    codes = model.predict(f, params, HALVES, model_a)
 
     out_dir = os.path.dirname(os.path.abspath(args.out))
     if not os.path.isdir(out_dir):

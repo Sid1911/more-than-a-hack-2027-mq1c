@@ -21,8 +21,9 @@ for every switch between live and dead (`c_dead`).
 - *There are no labels for this match, and few anywhere.* We may not train on the provided game,
   and the external games we found with matching tracking and possession information are Metrica's
   three public sample games. Twelve hand-chosen signals with tuned weights can be fitted reliably
-  on three games; a learned classifier with thousands of parameters could not, and would also
-  have to cross the gap between the samples' clean tracking and the competition's automatic one.
+  on three games. A learned classifier alone did worse than this model (0.511 against 0.538 on
+  unseen games), but as a *second opinion* added to the same decoder it helps clearly (Model A,
+  below).
 - *The ball is missing 41% of the time.* A frame-by-frame classifier has nothing to say on those
   frames. In our model they simply carry no ball evidence, so the current state continues through
   the gap unless something else (players stopping, a restart tag) says otherwise.
@@ -40,9 +41,23 @@ for every switch between live and dead (`c_dead`).
 D also gets a constant `b_dead`. Scores are rounded to 10⁻⁶ before the search so the result is
 identical on every machine.
 
+**Model A, a second opinion** (`possession/modela/`, added 16 November). A gradient-boosted tree
+classifier (scikit-learn `HistGradientBoostingClassifier`, 300 trees) reads 147 measurements per
+frame — ball position, speed and direction; distances, speeds and counts of players around the
+ball; team shape, compactness and attacking position — and gives a probability for H, A and D.
+The measurements come from `build_features.py`, written by our teammate Pranav Swaroop and used
+unchanged. Its centred log-probabilities, times `w_model` = 2, are added to the scores above on
+every frame where the ball is seen; where it is not seen Model A says nothing. Left out of its
+inputs: Smart Tagging and homography (the training games have neither) and every
+ball-visibility measurement (the sample games hide the ball at stoppages, so a model would learn
+"ball missing = dead ball", which does not hold for the competition tracking). Before use, every
+game is turned, from its own data, so the home goalkeeper starts on the left, as the feature
+code expects. Inputs are rounded to 3 decimals so floating-point differences between machines
+cannot cross a tree's split point.
+
 **The settings** (`params.json`): `w_team` 8, `r_ctrl` 3.0 m, `v_ctrl` 8 m/s, `m_scale` 1.0 m,
 `w_act` 0.5, `a0` 1.8 m/s, `w_out` 3, `w_tag` 2, `w_phase` 0.2, `b_dead` 0, `c_switch` 80,
-`c_dead` 30. All but `w_out` were tuned (section 3).
+`c_dead` 30, `w_model` 2. All but `w_out` were tuned (section 3).
 
 ## 2. Assets used and dropped
 
@@ -87,7 +102,14 @@ missed and timing errors up to 1 s; and attacking/defending phases are faked fro
 with random shifts and stretches, 12% of teams flipped, 6% N/A and 10% false phases. These error
 rates are our assumptions about the real tagging, not measurements of it.
 
-**How it was tuned.** A coordinate search over a grid for each of the 11 tuned settings, maximising
+**How Model A was trained** (`scripts/train_model_a.py`). On the same six roughened games, using
+frames where the ball is seen, every second frame, balanced classes and a fixed seed. Its weight
+was chosen on predictions for games the model never saw: for each sample game, a model trained on
+the other two predicted it. Mean spellF1 over the three games was 0.534 with weight 0, rising to
+0.587–0.593 for every weight from 1 to 4; we took 2, the middle of that plateau, rather than the
+single best (3). The submitted model is then trained on all three games.
+
+**How the main model was tuned.** A coordinate search over a grid for each of the 11 tuned settings, maximising
 spellF1 averaged over the three games under two random roughenings each. It is seeded, so
 `scripts/tune.py` writes the same `params.json` every time. `w_out` was fixed at 3 from the laws of
 the game, because the sample games blank the ball whenever it is out and cannot teach it.
@@ -120,19 +142,20 @@ the game, because the sample games blank the ball whenever it is out and cannot 
 
 ## 5. Results
 
-| | spellF1 |
-|---|---|
-| sample games, roughened, unseen during tuning — organisers' baseline method | 0.30 |
-| same — our model, tracking only | 0.52 |
-| same — our model, tracking + attacking-phase tags (submitted) | 0.54 |
-| public 5 minutes — organisers' best baseline (smooth125) | 0.424 |
-| public 5 minutes — our final file | 0.526 |
+| | spellF1 | macroF1 |
+|---|---|---|
+| sample games, roughened, unseen during tuning — organisers' baseline method | 0.30 | |
+| same — main model, tracking only | 0.52 | |
+| same — main model, tracking + attacking-phase tags | 0.534 | 0.781 |
+| same — main model + Model A, each game predicted by a Model A that never saw it (submitted) | **0.591** | **0.799** |
+| public 5 minutes — organisers' best baseline (smooth125) | 0.424 | 0.581 |
+| public 5 minutes — main model alone (our 13 November file) | 0.526 | 0.747 |
 
-On the public 5 minutes our file also scores macroF1 0.747 (best baseline 0.581), finds 18
-possessions against 17 true ones (average 14.9 s against 14.2 s), and has dead-ball F1 0.58
-(baseline 0.15). Those 5 minutes hold 17 possessions, so one possession moves spellF1 by about
-0.03. We ran the official scorer on them only to check that our pipeline produces a valid,
-sensible file, and changed no setting because of it.
+Model A's gain held on each of the three sample games separately (+0.045 to +0.059 spellF1).
+The public 5 minutes hold 17 possessions, so one possession moves spellF1 there by about 0.03.
+We ran the official scorer on them only to check that our pipeline produces a valid, sensible
+file, and changed no setting because of it; the decision to add Model A was made on the sample
+games alone.
 
 ### Approaches we tested and did not use
 
@@ -150,6 +173,16 @@ All of these were judged on the sample games only, never on the provided match.
   kept the hand-weighted model.
 - The same test shows our model is not overfitted to the sample games: retuned on two games, it
   scores 0.538 on the unseen third; tuned on all three, it scores 0.534.
+- **Our teammates' rule-based designs.** A deterministic rulebook (contacts, possession episodes,
+  eight dead-ball detectors) scored 0.113 as written and 0.241 when tuned on sample games. Model A
+  on its own, with smoothing, scored 0.511. Both lost to the main model alone (0.538); Model A
+  only helps as a second opinion inside it.
+- **More rules on top of the main model** (16 November), each retuned jointly with all the other
+  settings and judged on unseen games: a "ball under control" signal (player close and moving
+  with the ball for a few frames), moving each change of team to the new team's first control
+  frame, players bunching as a sign of a stoppage, and merging possessions shorter than 1–2 s.
+  None gained more than 0.003; the tuning switched most of them off by itself.
+- **Ball not seen as a dead-ball signal.** See section 2: an artefact of the sample data.
 
 ## 6. Limitations, and what we would fix with more time
 
@@ -167,8 +200,11 @@ All of these were judged on the sample games only, never on the provided match.
   a dead ball shorter than a second: 853 of the 1,420 dead spells on the sample games. Removing
   them changes sample-game spellF1 by less than 0.001 (0.5338 to 0.5335), so we left the model as
   tuned. A cleaner design would forbid dead spells shorter than about a second.
-- **Three practice games.** All twelve settings rest on three matches from one provider, and on our
-  guesses about how the competition's tracking and tagging differ from them.
+- **Three practice games.** All thirteen settings and Model A rest on three matches from one
+  provider, and on our guesses about how the competition's tracking and tagging differ from them.
+  Model A, with 147 inputs, is the part most exposed to that difference; its evidence is capped by
+  its weight and silent whenever the ball is missing, and the main model's own evidence still
+  decides when the two disagree strongly.
 - **Defending-phase tags are unused**, because their meaning is not documented. With them on, our
   sample-game tests give spellF1 0.554 instead of 0.540 if the tags are as reliable as we assumed,
   and 0.511 instead of 0.517 if they are no better than chance.
@@ -177,13 +213,15 @@ All of these were judged on the sample games only, never on the provided match.
 
 ```
 python -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt     # numpy 1.26.4, pandas 2.2.3 (pinned)
+.venv/bin/python -m pip install -r requirements.txt     # numpy, pandas, scikit-learn (all pinned)
 .venv/bin/python scripts/predict.py --data-dir path/to/data/bundle
 ```
 
 This writes `submission/MQ1C.csv` and prints its SHA-256: the same data and code give the same
 file, byte for byte. Rebuilding `params.json`: `scripts/tune.py --sample-dir path/to/sample-data`
-(about two minutes, deterministic). Full instructions in [README.md](README.md).
+(about two minutes, deterministic). Rebuilding Model A and its weight:
+`scripts/train_model_a.py --sample-dir path/to/sample-data` (about eight minutes). Full
+instructions in [README.md](README.md).
 
 ## Rules compliance
 
@@ -193,11 +231,13 @@ explicitly allows.
 
 | what we did | the rule that allows it |
 |---|---|
+| trained Model A on Metrica's public sample games 1–3 only | "If you need to train (or retrain), you MUST use only external data" (clarification) |
 | tuned every setting on Metrica's public sample games 1–3 | "If your algorithm has parameters that need to be tuned, you MUST tune them on external data" (clarification); "External data about other games" (RULES.md) |
 | used that sample data, crediting the source | "Using any dataset you have the rights to use" (clarification); the sample data is published by Metrica Sports for the community to experiment with; it has no formal licence file, and its README asks users to "be responsible with the use of this data" and to acknowledge the source in public uses, which we do |
 | used the tactical tracking and the Smart Tagging as inputs | "Using as input … the automatic tracking data, the smart tagging" (clarification) |
 | ran the organisers' scorer on the public 5-minute ground truth, as a pipeline check only | "Running automatic checks using only the provided data" (clarification); "for checking that your pipeline is correct" (RULES.md) |
 | used an AI coding assistant to help write the code | "LLMs, hosted or local" (RULES.md). No provided data was ever uploaded to it |
+| used a teammate's feature code (`possession/modela/build_features.py`) | our own team's work |
 | fixed two values from football knowledge (a ball outside the lines is dead; each tag code's direction from its name) | design constants, not fitted to anything and not tied to any frame of the provided game |
 
 What we did not do: no hand labels or manual corrections on the provided game; no fitting,
