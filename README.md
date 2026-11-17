@@ -16,8 +16,8 @@ because whole possessions are what the ranking metric counts.
 | Input | the tactical automatic tracking (players + ball) and the Smart Tagging. Nothing else |
 | Output | `submission/MQ1C.csv`, 199,319 rows of `frame,label` |
 | Method | per-frame evidence for H / A / D, then a Viterbi search with a penalty for every switch |
-| Evidence | nearest player to the ball · how fast the players move · ball outside the lines · set-piece tags · attacking-phase tags · Model A's opinion (147 ball and player measurements, gradient-boosted trees) |
-| Tuning | 13 settings and Model A, tuned and trained only on Metrica's three public sample games, roughened to look like the competition's tracking |
+| Evidence | nearest player to the ball · how fast the players move · ball outside the lines · ball standing still (placed for a restart) · set-piece tags · attacking-phase tags · Model A's opinion (147 ball and player measurements, gradient-boosted trees) |
+| Tuning | 15 settings and Model A, tuned and trained only on Metrica's three public sample games, roughened to look like the competition's tracking |
 | Training labels | none from the provided game. Sample-game labels come from Metrica's published event data |
 | Runtime | about 2 minutes on a laptop (plus about 1 minute the first time, to parse the tracking) |
 | Reproducible | deterministic; the run prints the file's SHA-256 so you can check it matches ours |
@@ -76,6 +76,12 @@ It takes about two minutes and writes the same `params.json` every time. To rebu
 .venv/bin/python scripts/train_model_a.py --sample-dir path/to/sample-data
 ```
 
+To see how the still-ball settings (`k_still`, `w_still`) were chosen, under both test scenarios:
+
+```
+.venv/bin/python scripts/check_still.py --sample-dir path/to/sample-data
+```
+
 ## What is in this repository
 
 ```
@@ -86,12 +92,14 @@ possession/
   modela/         Model A: our teammate's feature code (build_features.py, unchanged), the
                   adapter that runs it on any game (layout.py), and loading/evidence
   labels.py       possession labels for the sample games, from their event data
-  simulate.py     roughens the sample games to look like the competition's automatic tracking
+  simulate.py     roughens the sample games to look like the competition's automatic tracking,
+                  and builds the second test scenario (a placed ball seen at restarts)
   metrics.py      spellF1 and macroF1, re-implemented to the organisers' definitions, for tuning
 scripts/
   predict.py      writes the submission file      <- the command that regenerates our file
   tune.py         rebuilds params.json from the sample games
   train_model_a.py       trains Model A on the sample games and chooses its weight
+  check_still.py         chooses the still-ball settings and checks them under both scenarios
   summary.py      turns a submission into a readable list of possessions and goals
   verify_submission.py   compares two submission files byte for byte
   reproduce_check.py     fresh clone + clean install + regenerate + compare
@@ -116,7 +124,9 @@ never seen during tuning (average of three games × two roughenings):
 | organisers' baseline method (nearest player + majority vote over 2 or 5 s) | 0.30 | |
 | main model, tracking only | 0.52 | |
 | main model, tracking + attacking-phase tags | 0.534 | 0.781 |
-| main model + Model A, each game judged by a Model A that never saw it (submitted) | **0.591** | **0.799** |
+| main model + Model A, each game judged by a Model A that never saw it | 0.591 | 0.799 |
+| + still-ball cue, five roughenings, ball hidden at stoppages (scenario 1) | 0.594 (was 0.599) | 0.795 (was 0.800) |
+| + still-ball cue, five roughenings, placed ball seen at restarts (scenario 2, an assumption) — submitted | **0.553** (was 0.496) | **0.760** (was 0.612) |
 
 On the organisers' public 5 minutes, see [TECHNICAL.md](TECHNICAL.md#results). That window holds
 17 possessions, so it is a pipeline check, not a benchmark — and we never tuned on it.
@@ -133,7 +143,7 @@ the match data. Details in [TECHNICAL.md](TECHNICAL.md#rules-compliance).
 
 - Challenge, scorer and competition data: Metrica Sports, FC Barcelona Innovation Hub and Mobile
   World Capital Barcelona.
-- Model A's feature code: Pranav Swaroop, Manvit Sanka, Vignesh, Suchit Honamalappa (team MQ1C).
+- Model A's feature code: Pranav Swaroop (team MQ1C).
 - Tuning data: [Metrica Sports sample data](https://github.com/metrica-sports/sample-data), games
   1–3 — used with thanks, as its README asks public uses to acknowledge the source.
 

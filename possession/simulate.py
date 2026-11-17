@@ -104,3 +104,30 @@ def tag_windows(restarts, n, rng, half_window_s=2.5, miss_rate=0.15, shift_s=1.0
         centre = int(frame + rng.uniform(-shift_s, shift_s) * FPS)
         tag[max(0, centre - half):min(n, centre + half)] = True
     return tag
+
+
+def place_ball(ball, labels, restarts, rng, share=(0.3, 1.0), spot_within_s=2.0):
+    """Scenario 2 for testing (an ASSUMPTION about the competition tracking, not a measurement):
+    during the stoppage before each restart the ball is seen standing still at the restart spot.
+
+    The sample games blank the ball during every stoppage. Automatic tracking of the competition
+    kind may instead see a ball that has been placed for a throw-in, free kick, corner or goal
+    kick. Here, for each dead spell that ends in a logged restart, the ball is put at the restart
+    spot (where the clean tracking first sees it within 2 s after the restart) for the last
+    30-100% of the spell, chosen at random: it is placed some time after the whistle. The burst
+    ball loss of drop_ball is applied afterwards, as for every other frame.
+    """
+    out = ball.copy()
+    n = len(labels)
+    for r in restarts:
+        if r <= 0 or r >= n or labels[r - 1] != 2:          # 2 = dead ball
+            continue
+        a = r - 1
+        while a > 0 and labels[a - 1] == 2:
+            a -= 1
+        seen = np.flatnonzero(~np.isnan(ball[r:r + int(spot_within_s * FPS), 0]))
+        if not len(seen):
+            continue
+        k = int(round((r - a) * rng.uniform(*share)))
+        out[r - k:r] = ball[r + seen[0]]
+    return out

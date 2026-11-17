@@ -36,6 +36,7 @@ for every switch between live and dead (`c_dead`).
 | player activity | median speed of all tracked players (positions 0.5 s apart, speeds over 12 m/s dropped as identity switches), averaged over 3 s | `w_act · clip(a0 − activity, −3, 3)` added to D: walking players mean a stoppage |
 | ball outside the lines | ball seen more than 0.5 m outside the pitch | `w_out` added to D |
 | set-piece tags | Smart Tagging `SET PIECES` windows | `w_tag` added to D in the first half of each window, subtracted in the second: dead before the restart, live after it |
+| ball standing still (added 17 Nov) | share of the surrounding 4 s in which the ball is seen and moves less than 1 m in 1 s | `w_still · still` added to D, and all team evidence (nearest player and Model A) multiplied by `clip(1 − k_still · still, 0, 1)`: a player standing next to a ball placed for a restart is not in possession of a live ball |
 | attacking-phase tags | Smart Tagging `BUILD UP`, `PROGRESSION`, `BALL IN FINAL THIRD`, `BALL IN THE BOX`, `CREATING CHANCES`, `ATTACKING TRANSITION`, `LONG BALL`, with their Team tag | `w_phase` added to the tagged team while the phase lasts (overlaps capped at one phase's worth) |
 
 D also gets a constant `b_dead`. Scores are rounded to 10⁻⁶ before the search so the result is
@@ -55,9 +56,18 @@ game is turned, from its own data, so the home goalkeeper starts on the left, as
 code expects. Inputs are rounded to 3 decimals so floating-point differences between machines
 cannot cross a tree's split point.
 
+**The still-ball cue** (added 17 November). A ball placed for a throw-in, free kick, corner or goal
+kick stands still, while a ball in play almost never stays still for seconds. "Still" means moving
+less than 1 m in 1 s (the tracker's error is about 0.3 m, and even a slow dribble covers more than
+1 m in a second), and it must last for most of a 4 s window (setting up a restart takes longer than
+that). Both constants are fixed from physics and the laws of the game, not fitted. While the ball
+is still, the team evidence is switched off and the frame leans towards D. Without this, a visible
+placed ball with the taker beside it reads as "his team has the ball", so stoppages are labelled
+as possession and the next possession starts too early.
+
 **The settings** (`params.json`): `w_team` 8, `r_ctrl` 3.0 m, `v_ctrl` 8 m/s, `m_scale` 1.0 m,
 `w_act` 0.5, `a0` 1.8 m/s, `w_out` 3, `w_tag` 2, `w_phase` 0.2, `b_dead` 0, `c_switch` 80,
-`c_dead` 30, `w_model` 2. All but `w_out` were tuned (section 3).
+`c_dead` 30, `w_model` 2, `k_still` 4, `w_still` 0.1. All but `w_out` were tuned (section 3).
 
 ## 2. Assets used and dropped
 
@@ -109,6 +119,18 @@ the other two predicted it. Mean spellF1 over the three games was 0.534 with wei
 0.587–0.593 for every weight from 1 to 4; we took 2, the middle of that plateau, rather than the
 single best (3). The submitted model is then trained on all three games.
 
+**How the still-ball settings were chosen** (`scripts/check_still.py`). The sample games blank the
+ball during every stoppage, so on their own they cannot show what happens when a placed ball is
+seen. We therefore test under two scenarios built from the same sample games: (1) as above, and
+(2) the same plus a ball seen standing still at the restart spot for the last 30–100% of each
+stoppage that ends in a restart (the spot is where the clean tracking first sees the ball after
+the restart). **Scenario 2 is an assumption** about the competition's automatic tracking, made from
+the laws of the game, not a measurement of it. Five roughenings per game and scenario. For each
+sample game, `k_still`, `w_still`, `b_dead` and `c_dead` were chosen on the other two games
+(maximising spellF1 averaged over both scenarios) and Model A was retrained without it; every
+held-out game picked `k_still` 4 and `w_still` 0.1. Changing either by ±30% moves spellF1 by at
+most 0.008.
+
 **How the main model was tuned.** A coordinate search over a grid for each of the 11 tuned settings, maximising
 spellF1 averaged over the three games under two random roughenings each. It is seeded, so
 `scripts/tune.py` writes the same `params.json` every time. `w_out` was fixed at 3 from the laws of
@@ -148,10 +170,25 @@ the game, because the sample games blank the ball whenever it is out and cannot 
 | same — main model, tracking only | 0.52 | |
 | same — main model, tracking + attacking-phase tags | 0.534 | 0.781 |
 | same — main model + Model A, each game predicted by a Model A that never saw it (submitted) | **0.591** | **0.799** |
+| same, five roughenings — main model + Model A, scenario 1 (ball hidden at stoppages) | 0.599 | 0.800 |
+| same, scenario 1 — + still-ball cue (submitted), settings chosen without the held-out game | 0.594 | 0.795 |
+| same, scenario 2 (placed ball seen) — main model + Model A | 0.496 | 0.612 |
+| same, scenario 2 — + still-ball cue (submitted) | **0.553** | **0.760** |
 | public 5 minutes — organisers' best baseline (smooth125) | 0.424 | 0.581 |
 | public 5 minutes — main model alone (our 13 November file) | 0.526 | 0.747 |
 
 Model A's gain held on each of the three sample games separately (+0.045 to +0.059 spellF1).
+
+The still-ball cue raises dead-ball recall from 0.28 to 0.72 in scenario 2 (precision 0.45 to
+0.65) and from 0.831 to 0.836 in scenario 1, where it costs 0.005 spellF1 and lowers dead-ball
+precision from 0.70 to 0.68, because a live ball held still (a goalkeeper with the ball in his
+hands) also switches off the team evidence. Re-run with 30% and 50% of the ball missing, gaps of
+1 s and 3 s, position noise of 0.2 m and 0.5 m, and 30% of set-piece tags missed, its gain in
+scenario 2 stayed between +0.04 and +0.08 spellF1 and its cost in scenario 1 between 0 and 0.006.
+We adopted it because the gain if the competition tracking shows placed balls is about ten times
+the cost if it does not. Possession hand-overs on the sample games are on time: the median
+predicted change is 0 frames from the true one, with or without the cue, so we made no change for
+timing.
 The public 5 minutes hold 17 possessions, so one possession moves spellF1 there by about 0.03.
 We ran the official scorer on them only to check that our pipeline produces a valid, sensible
 file, and changed no setting because of it; the decision to add Model A was made on the sample
@@ -183,6 +220,10 @@ All of these were judged on the sample games only, never on the provided match.
   frame, players bunching as a sign of a stoppage, and merging possessions shorter than 1–2 s.
   None gained more than 0.003; the tuning switched most of them off by itself.
 - **Ball not seen as a dead-ball signal.** See section 2: an artefact of the sample data.
+- **Bridging short ball gaps with a straight line** (17 November), so the nearest-player evidence
+  is not silent while the ball is missing for up to 2 s. At its smallest weight it added 0.001
+  spellF1 in scenario 1 and lost 0.003 spellF1 and 0.06 dead-ball recall in scenario 2; more
+  weight was worse in both.
 
 ## 6. Limitations, and what we would fix with more time
 
@@ -200,11 +241,18 @@ All of these were judged on the sample games only, never on the provided match.
   a dead ball shorter than a second: 853 of the 1,420 dead spells on the sample games. Removing
   them changes sample-game spellF1 by less than 0.001 (0.5338 to 0.5335), so we left the model as
   tuned. A cleaner design would forbid dead spells shorter than about a second.
-- **Three practice games.** All thirteen settings and Model A rest on three matches from one
+- **Three practice games.** All fifteen settings and Model A rest on three matches from one
   provider, and on our guesses about how the competition's tracking and tagging differ from them.
   Model A, with 147 inputs, is the part most exposed to that difference; its evidence is capped by
   its weight and silent whenever the ball is missing, and the main model's own evidence still
   decides when the two disagree strongly.
+- **Dead-ball recall on the real match cannot be measured from the sample games.** The still-ball
+  cue rests on scenario 2, an assumption that a ball placed for a restart is tracked. If the
+  competition tracking hides it, the cue does almost nothing and costs about 0.005 spellF1.
+- **A live ball held still** (a goalkeeper standing with the ball) looks like a placed ball, so
+  the team evidence is switched off for those seconds.
+- **Very noisy positions (0.5 m) blunt the player-activity signal**: dead-ball recall falls to
+  about 0.11 in scenario 1, with or without the still-ball cue.
 - **Defending-phase tags are unused**, because their meaning is not documented. With them on, our
   sample-game tests give spellF1 0.554 instead of 0.540 if the tags are as reliable as we assumed,
   and 0.511 instead of 0.517 if they are no better than chance.
@@ -220,7 +268,9 @@ python -m venv .venv
 This writes `submission/MQ1C.csv` and prints its SHA-256: the same data and code give the same
 file, byte for byte. Rebuilding `params.json`: `scripts/tune.py --sample-dir path/to/sample-data`
 (about two minutes, deterministic). Rebuilding Model A and its weight:
-`scripts/train_model_a.py --sample-dir path/to/sample-data` (about eight minutes). Full
+`scripts/train_model_a.py --sample-dir path/to/sample-data` (about eight minutes). Choosing the
+still-ball settings and printing the two-scenario check: `scripts/check_still.py --sample-dir
+path/to/sample-data` (about 15 minutes). Full
 instructions in [README.md](README.md).
 
 ## Rules compliance
@@ -232,6 +282,7 @@ explicitly allows.
 | what we did | the rule that allows it |
 |---|---|
 | trained Model A on Metrica's public sample games 1–3 only | "If you need to train (or retrain), you MUST use only external data" (clarification) |
+| built a second test scenario (placed ball seen at restarts) from the sample games and the laws of the game | not fitted to anything from the provided game; labelled as an assumption |
 | tuned every setting on Metrica's public sample games 1–3 | "If your algorithm has parameters that need to be tuned, you MUST tune them on external data" (clarification); "External data about other games" (RULES.md) |
 | used that sample data, crediting the source | "Using any dataset you have the rights to use" (clarification); the sample data is published by Metrica Sports for the community to experiment with; it has no formal licence file, and its README asks users to "be responsible with the use of this data" and to acknowledge the source in public uses, which we do |
 | used the tactical tracking and the Smart Tagging as inputs | "Using as input … the automatic tracking data, the smart tagging" (clarification) |

@@ -29,6 +29,11 @@ DEFAULT_PARAMS = {
     "w_act": 0.5,      # per m/s of player activity below a0
     "a0": 1.8,         # m/s; typical median player speed at the live/dead boundary
     "w_tag": 0.5,      # set-piece tag: dead just before the restart, live just after
+    "w_still": 0.0,    # ball seen standing still for ~4 s (features.still): a ball placed for a
+                       # restart. Adds to D. 0 = not used
+    "k_still": 1.0,    # how fast that stillness switches off the team evidence (incl. Model A):
+                       # team evidence x clip(1 - k_still * still, 0, 1). A player standing
+                       # next to a placed ball is not in possession of a live ball
     "w_phase": 0.0,    # tactical phase tags: which team the phase says has the ball
     # Model A (possession/modela): weight of its log-probabilities; 0 = not used
     "w_model": 0.0,
@@ -50,6 +55,7 @@ def emissions(f, p):
         margin = np.clip((f["da"] - f["dh"]) / p["m_scale"], -1.0, 1.0)
     team = p["w_team"] * close * gate * np.nan_to_num(margin, nan=0.0)
     team[~f["vis"]] = 0.0
+    team = team * live_gate(f, p)
     team = team + p.get("w_phase", 0.0) * phase_evidence(f["phases"], n)
     e[:, H] = team
     e[:, A] = -team
@@ -60,8 +66,19 @@ def emissions(f, p):
     # tuning blank the ball during every stoppage, so a weight on it would be learned from an
     # artefact of that data and would not transfer to the competition tracking.
     e[:, D] = (p["b_dead"] + p["w_act"] * slow + p["w_out"] * f["out"]
-               + p["w_tag"] * f["tag"])
+               + p["w_tag"] * f["tag"] + p.get("w_still", 0.0) * still(f))
     return e
+
+
+def still(f):
+    return np.asarray(f.get("still", np.zeros(len(f["vis"]))), dtype=float)
+
+
+def live_gate(f, p):
+    """1 normally; falls to 0 while the ball stands still (only when w_still is on)."""
+    if not p.get("w_still", 0.0):
+        return np.ones(len(f["vis"]))
+    return np.clip(1.0 - p.get("k_still", 1.0) * still(f), 0.0, 1.0)
 
 
 # Which way each Smart Tagging code points, fixed from what the code's name means in football.
@@ -156,7 +173,7 @@ def predict(f, p, blocks, model_a=None):
     labels = np.full(n, X, dtype=np.int8)
     e = emissions(f, p)
     if model_a is not None and p.get("w_model", 0.0):
-        e = e + p["w_model"] * model_a
+        e = e + p["w_model"] * model_a * live_gate(f, p)[:, None]
     # Rounded to 1e-6 so the decision is the same on every machine: numpy's vectorised exp can
     # differ in the last bit between CPUs, which could flip a near-tie in the search below.
     e = np.round(e, 6)
