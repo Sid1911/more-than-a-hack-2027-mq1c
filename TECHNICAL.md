@@ -169,7 +169,7 @@ the game, because the sample games blank the ball whenever it is out and cannot 
 | sample games, roughened, unseen during tuning — organisers' baseline method | 0.30 | |
 | same — main model, tracking only | 0.52 | |
 | same — main model, tracking + attacking-phase tags | 0.534 | 0.781 |
-| same — main model + Model A, each game predicted by a Model A that never saw it (submitted) | **0.591** | **0.799** |
+| same — main model + Model A, each game predicted by a Model A that never saw it (16 November) | 0.591 | 0.799 |
 | same, five roughenings — main model + Model A, scenario 1 (ball hidden at stoppages) | 0.599 | 0.800 |
 | same, scenario 1 — + still-ball cue (submitted), settings chosen without the held-out game | 0.594 | 0.795 |
 | same, scenario 2 (placed ball seen) — main model + Model A | 0.496 | 0.612 |
