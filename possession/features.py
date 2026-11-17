@@ -8,9 +8,6 @@ Nothing here decides anything; the model in model.py weighs this evidence.
     bspeed    ball speed, m/s (NaN when the ball is not seen)
     activity  how fast the players are moving: median player speed, smoothed over ~3 s.
               Players jog and sprint while the ball is live and walk during stoppages.
-    still     share of the surrounding ~4 s in which the ball is seen and standing still
-              (moved less than STILL_M in STILL_SPAN_S). 0 when the ball is not seen. A ball
-              placed for a restart stands still; a ball in play rarely does for that long.
     tag       set-piece windows from the tactical tagging, as a signed signal: +1 in the
               first half of each window (just before the restart: ball dead), -1 in the
               second half (just after it: ball live), 0 elsewhere.
@@ -26,15 +23,6 @@ FPS = 25
 MAX_PLAYER_SPEED = 12.0  # m/s; anything faster is a tracker identity jump, not a person
 PLAYER_SPEED_SPAN = 6    # speeds over +/- 6 frames (~0.5 s), so tracker jitter averages out
 BALL_SPEED_SPAN = 2
-# A ball "stands still" if it moved less than 1 m in 1 s. Fixed from physics, not fitted: the
-# tracker's position error is about 0.3 m and drifts smoothly, so a placed ball appears to move a
-# few tenths of a metre per second, while a ball in play -- even a slow dribble at walking pace --
-# covers well over 1 m in a second.
-STILL_SPAN_S = 1.0
-STILL_M = 1.0
-# How long a stillness must last to count, centred: about 4 s. Setting up a throw-in, free kick,
-# corner or goal kick takes longer than that, while a live ball is almost never still that long.
-STILL_WINDOW_S = 2.0
 
 
 def rolling_mean(x, half):
@@ -96,18 +84,8 @@ def compute(track, pitch, tag_mask=None, phases=None):
         median_speed = np.nanmedian(pspeed, axis=1)
     activity = rolling_mean(median_speed, int(1.5 * FPS))
 
-    half = int(STILL_SPAN_S * FPS / 2)
-    still_raw = np.full(n, np.nan)
-    if n > 2 * half:
-        moved = np.sqrt(((ball[2 * half:] - ball[:-2 * half]) ** 2).sum(-1))
-        ok = ~np.isnan(moved)
-        still_raw[half:n - half][ok] = (moved[ok] < STILL_M).astype(float)
-    still_raw[~vis] = 0.0
-    still = np.nan_to_num(rolling_mean(still_raw, int(STILL_WINDOW_S * FPS)), nan=0.0)
-    still[~vis] = 0.0
-
     return {
-        "vis": vis, "out": out, "still": still, "dh": dh, "da": da, "bspeed": bspeed, "activity": activity,
+        "vis": vis, "out": out, "dh": dh, "da": da, "bspeed": bspeed, "activity": activity,
         "tag": np.zeros(n) if tag_mask is None else tag_evidence(tag_mask),
         "phases": list(phases or []),
     }

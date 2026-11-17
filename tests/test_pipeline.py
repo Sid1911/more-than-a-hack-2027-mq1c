@@ -196,24 +196,6 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(switches, 4)                  # one switch per real change, no flicker
         self.assertGreater(np.mean(path == truth), 0.95)
 
-    def test_still_ball_switches_off_team_evidence(self):
-        from possession import features
-        n = 400
-        ball = np.zeros((n, 2), dtype=np.float32)
-        ball[:, 0] = np.where(np.arange(n) < 200, 50.0, 50.0 + 0.2 * (np.arange(n) - 200))
-        ball[:, 1] = 34.0                               # still for 8 s, then rolling at 5 m/s
-        players = np.stack([ball + 1.0, ball + 30.0], axis=1)  # home player 1.4 m away
-        track = {"ball": ball, "players": players, "team": np.array([0, 1])}
-        f = features.compute(track, (105.0, 68.0))
-        self.assertGreater(f["still"][100], 0.99)      # placed ball
-        self.assertEqual(f["still"][350], 0.0)         # ball in play
-        p = dict(model.DEFAULT_PARAMS, w_still=0.1, k_still=4.0)
-        e = model.emissions(f, p)
-        self.assertEqual(e[100, 0], 0.0)               # no team evidence at a placed ball
-        self.assertGreater(e[100, 2], e[100, 0])       # it leans to dead ball instead
-        off = model.emissions(f, dict(p, w_still=0.0))
-        self.assertGreater(off[100, 0], 0.0)           # switched off: team evidence as before
-
     def test_params_file(self):
         with open(os.path.join(ROOT, "params.json")) as h:
             params = json.load(h)
